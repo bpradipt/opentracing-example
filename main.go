@@ -4,19 +4,17 @@ import (
 	"flag"
 	"fmt"
 	"log"
+        "os"
 	"net/http"
 
-	lightstepot "github.com/lightstep/lightstep-tracer-go"
 	"github.com/opentracing/opentracing-go"
 
-	"sourcegraph.com/sourcegraph/appdash"
-	appdashot "sourcegraph.com/sourcegraph/appdash/opentracing"
+        zipkin "github.com/openzipkin/zipkin-go-opentracing"
+
 )
 
 var (
 	port           = flag.Int("port", 8080, "Example app port.")
-	appdashPort    = flag.Int("appdash.port", 8700, "Run appdash locally on this port.")
-	lightstepToken = flag.String("lightstep.token", "", "Lightstep access token.")
 )
 
 func main() {
@@ -24,13 +22,18 @@ func main() {
 
 	var tracer opentracing.Tracer
 
-	// Would it make sense to embed Appdash?
-	if len(*lightstepToken) > 0 {
-		tracer = lightstepot.NewTracer(lightstepot.Options{AccessToken: *lightstepToken})
-	} else {
-		addr := startAppdashServer(*appdashPort)
-		tracer = appdashot.NewTracer(appdash.NewRemoteCollector(addr))
-	}
+        collector, err := zipkin.NewHTTPCollector(
+                fmt.Sprintf("http://%s:9411/api/v1/spans", os.Args[1]))
+        if err != nil {
+             log.Fatal(err)
+             return
+        }
+        tracer, err = zipkin.NewTracer(
+            zipkin.NewRecorder(collector, false, "127.0.0.1:0", "example"),
+        )
+        if err != nil {
+           log.Fatal(err)
+         }
 
 	opentracing.InitGlobalTracer(tracer)
 
